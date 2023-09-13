@@ -1,13 +1,16 @@
 import cv2
 import time
-from send_mail import send_email
+from functions import send_email, clean_folder
+import glob
+from threading import Thread
+
 
 video = cv2.VideoCapture(0)
 time.sleep(1)
 
 first_frame = None
 status_list = []
-
+count = 1
 while 1:
     status = 0
 
@@ -37,16 +40,21 @@ while 1:
 
     for contour in contours:
         # To remove smaller objects-- unintended objects
-        if cv2.contourArea(contour) < 5000:
+        if cv2.contourArea(contour) < 10000:
             continue
         # get dimensions around the  object contour
         x, y, w, h = cv2.boundingRect(contour)
 
         # create  green rectangle around the object
-        rectangle = cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
+        rectangle = cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
         # updating status variable if an object is detected(in rectangle)
         if rectangle.any():
             status = 1
+            cv2.imwrite(f"images/{count}.png", frame)
+            count += 1
+            all_images = glob.glob("images/*.png")
+            index = int(len(all_images) / 2)
+            image_with_object = all_images[index]
 
     # updating status list based on status
     status_list.append(status)
@@ -54,7 +62,12 @@ while 1:
 
     # Checking the exit of object based on status list and trigger email
     if status_list[0] == 1 and status_list[1] == 0:
-        print("send email")
+
+        # using threading instead of directly calling function, so that do not see frame drops, and also
+        # it does not interrupt program
+        email_thread = Thread(target=send_email, args=(image_with_object, ))
+        email_thread.daemon = True
+        email_thread.start()
 
     cv2.imshow("Video", frame)
 
@@ -63,4 +76,10 @@ while 1:
     if key == ord("q"):
         break
 
+# Threading used to call function, to clean the folder after mail has been sent
+clean_thread = Thread(target=clean_folder)
+clean_thread.daemon = True
+clean_thread.start()
+
 video.release()
+
